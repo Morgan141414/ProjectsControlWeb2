@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/projectscontrol
+            git pull origin main
+            docker compose build
+            docker compose up -d --remove-orphans
+            # Wait for backend to be healthy
+            sleep 10
+            curl -f http://localhost:8000/health || exit 1
+            echo "Deploy successful"
+
+      - name: Health check
+        if: success()
+        run: |
+          echo "Deployment completed successfully"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed! Check server logs."
